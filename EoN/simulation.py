@@ -439,11 +439,10 @@ def _simple_test_transmission_(u, v, p):
 
 
 def discrete_SIR(G, test_transmission=_simple_test_transmission_, args=(),
-                initial_infecteds=None, initial_recovereds = None, 
-                rho = None, tmin = 0, tmax = float('Inf'),
-                return_full_data=False,
-                node_commander=None, graph_commander=None,
-                 sim_kwargs = None):
+                 initial_infecteds=None, initial_recovereds = None,
+                 rho=None, tmin=0, tmax=float('Inf'),
+                 node_commander=None, graph_commander=None,
+                 return_full_data=False, sim_kwargs = None):
     #tested in test_discrete_SIR
     r'''
     Simulates an SIR epidemic on G in discrete time, allowing user-specified transmission rules
@@ -514,6 +513,14 @@ def discrete_SIR(G, test_transmission=_simple_test_transmission_, args=(),
     **tmin** start time
         
     **tmax** stop time (default Infinity). 
+
+    **node_commander** function(neighbors, connected_neighbors, susceptible_neighbors, infected_neighbors)
+        A function that takes as its arguments,
+            neighbors: set of nodes the node can connect to.
+            connected_neighbors: set of nodes the node is presently connected to
+            susceptable_neighboors: set of (
+
+    **graph_commander** TODO
 
     **return_full_data** boolean (default False)
         Tells whether a Simulation_Investigation object should be returned.  
