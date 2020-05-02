@@ -443,7 +443,7 @@ def discrete_SIR(G, test_transmission=_simple_test_transmission_, args=(),
                 rho = None, tmin = 0, tmax = float('Inf'),
                 return_full_data=False,
                 node_commander=None, graph_commander=None,
-                 sim_kwargs = None):
+                sim_kwargs = None):
     #tested in test_discrete_SIR
     r'''
     Simulates an SIR epidemic on G in discrete time, allowing user-specified transmission rules
@@ -551,10 +551,10 @@ def discrete_SIR(G, test_transmission=_simple_test_transmission_, args=(),
     Because this sample uses the defaults, it is equivalent to a call to 
     basic_discrete_SIR
     '''
+
     if rho is not None and initial_infecteds is not None:
         raise EoN.EoNError("cannot define both initial_infecteds and rho")
 
-    
     
     if initial_infecteds is None:  #create initial infecteds list if not given
         if rho is None:
@@ -575,10 +575,10 @@ def discrete_SIR(G, test_transmission=_simple_test_transmission_, args=(),
         if initial_recovereds is not None:
             for node in initial_recovereds:
                 node_history[node] = ([tmin], ['R'])
-    # Usied as a ref for the node & graph commanders
+    # Used as a ref for the node & graph commanders
     G_original = G.copy()
 
-    N=G.order()
+    N = G.order()
     t = [tmin]
     S = [N-len(initial_infecteds)]
     I = [len(initial_infecteds)]
@@ -594,7 +594,6 @@ def discrete_SIR(G, test_transmission=_simple_test_transmission_, args=(),
             susceptible[u] = False
         
     infecteds = set(initial_infecteds)
-    
     while infecteds and t[-1]<tmax:
         new_infecteds = set()
         
@@ -612,7 +611,7 @@ def discrete_SIR(G, test_transmission=_simple_test_transmission_, args=(),
 
         # Action of the commanders is after the most recent round with previous rounds data
         if node_commander:
-            #print(nx.info(G))
+            # print(nx.info(G))
             for n in G:
                 connected_neighbors = set(G.neighbors(n))
                 neighbors = set(G_original.neighbors(n))
@@ -630,8 +629,53 @@ def discrete_SIR(G, test_transmission=_simple_test_transmission_, args=(),
             #print(nx.info(G))
 
         if graph_commander:
-            pass
-            #G = graph_commander(G,)
+            '''
+            Idea: going to use subgraphs to represent countries.  Can check on the percentage 
+            infected in other countries to determine if it will close its borders.  Closing borders
+            means no connections between countries. 
+            '''
+            countries = graph_commander
+            g_remove_edges = []
+            def get_remove_edges(country1, country2=None, close_all=False):
+                g_remove_edges = []
+                if country2 is not None and close_all:
+                    raise EoN.EoNError("must choose either country2 or close_all")
+                c1_node_ids = list((countries[country1]["G"]).nodes)
+                if country2:
+                    c2_node_ids = list((countries[country2]["G"]).nodes)
+                    for edge in G.edges:
+                        if edge[0] in c1_node_ids and edge[1] in c2_node_ids:
+                            g_remove_edges.append(edge)
+                        if edge[1] in c1_node_ids and edge[0] in c2_node_ids:
+                            g_remove_edges.append(edge)
+                if close_all:
+                    for edge in G.edges:
+                        if edge[0] in c1_node_ids and edge[1] not in c1_node_ids:
+                            g_remove_edges.append(edge)
+                        if edge[1] in c1_node_ids and edge[0] not in c1_node_ids:
+                            g_remove_edges.append(edge)
+                return g_remove_edges
+            # Update infected percentage
+            for c in countries:
+                country_nodes = list((countries[c]["G"]).nodes)
+                infected_nodes = infecteds.intersection(country_nodes)
+                percentage = len(infected_nodes)/len(country_nodes)
+                countries[c]["infected"] = percentage
+            # Compile edges to remove
+            for c in countries:
+                # Check if own infected rate is too high
+                if countries[c]["infected"] >= countries[c]["tolerance_in"]:
+                    # If so, close all borders
+                    print('{} is closing all borders'.format(c))
+                    g_remove_edges = get_remove_edges(c, close_all=True)
+                # If not, check if other countries infected rate is too high
+                else:
+                    for c1 in countries:
+                        if not c == c1 and countries[c1]["infected"] >= countries[c]["tolerance_out"]:
+                            # If so, close borders to that country
+                            print('{} is closing off its border to {}'.format(c, c1))
+                            g_remove_edges = get_remove_edges(c, country2=c1)
+            G.remove_edges_from(g_remove_edges)
 
 
         if return_full_data:
