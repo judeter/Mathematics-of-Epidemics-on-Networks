@@ -438,7 +438,7 @@ def _simple_test_transmission_(u, v, p):
     return random.random()<p
 
 
-def discrete_SIR(G, test_transmission=_simple_test_transmission_, args=(),
+def discrete_SIR(G_initial, test_transmission=_simple_test_transmission_, args=(),
                  initial_infecteds=None, initial_recovereds = None,
                  rho=None, tmin=0, tmax=float('Inf'),
                  node_commander=None, graph_commander=None,
@@ -558,6 +558,9 @@ def discrete_SIR(G, test_transmission=_simple_test_transmission_, args=(),
     Because this sample uses the defaults, it is equivalent to a call to 
     basic_discrete_SIR
     '''
+    #TODO: currently G and G_original are hacks need a better way to track them
+    G = G_initial.copy()
+
     if rho is not None and initial_infecteds is not None:
         raise EoN.EoNError("cannot define both initial_infecteds and rho")
 
@@ -583,13 +586,14 @@ def discrete_SIR(G, test_transmission=_simple_test_transmission_, args=(),
             for node in initial_recovereds:
                 node_history[node] = ([tmin], ['R'])
     # Usied as a ref for the node & graph commanders
-    G_original = G.copy()
 
-    N=G.order()
+
+    N = G.order()
     t = [tmin]
     S = [N-len(initial_infecteds)]
     I = [len(initial_infecteds)]
     R = [0]
+    avg_degree = [sum([deg[1] for deg in G.degree()])/len(G)]
     
     susceptible = defaultdict(lambda: True)  
     #above line is equivalent to u.susceptible=True for all nodes.
@@ -619,22 +623,20 @@ def discrete_SIR(G, test_transmission=_simple_test_transmission_, args=(),
 
         # Action of the commanders is after the most recent round with previous rounds data
         if node_commander:
-            #print(nx.info(G))
             for n in G:
                 connected_neighbors = set(G.neighbors(n))
-                neighbors = set(G_original.neighbors(n))
+                neighbors = set(G_initial.neighbors(n))
                 infected_neighbors = infecteds.intersection(neighbors)
                 susceptible_neighbors = set([v for v in neighbors if susceptible[v]])
-                #recovered_neighbors = neighbors.difference(infected_neighbors, susceptible_neighbors)
                 add_edges, remove_edges = node_commander(neighbors, connected_neighbors,
                                                          susceptible_neighbors, infected_neighbors)
-                add_edges = [(n,v) for v in add_edges]
-                remove_edges = [(n,v) for v in remove_edges]
+                add_edges = [(n, v) for v in add_edges]
+                remove_edges = [(n, v) for v in remove_edges]
                 # Theres an ordering issue here. One node could decide to remove an edge and another add an edge.
                 # Which ever is last will have its way.
                 G.add_edges_from(add_edges)
                 G.remove_edges_from(remove_edges)
-            #print(nx.info(G))
+
 
         if graph_commander:
             pass
@@ -659,10 +661,10 @@ def discrete_SIR(G, test_transmission=_simple_test_transmission_, args=(),
         I.append(len(infecteds))
         S.append(S[-1]-I[-1])
         t.append(t[-1]+1)
-
+        avg_degree.append(sum([deg[1] for deg in G.degree()])/len(G))
     if not return_full_data:
         return np.array(t), np.array(S), np.array(I), \
-               np.array(R)
+               np.array(R), np.array(avg_degree)
     else:
         if sim_kwargs is None:
             sim_kwargs = {}
