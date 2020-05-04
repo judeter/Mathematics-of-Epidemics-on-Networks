@@ -1053,7 +1053,7 @@ class Simulation_Investigation():
         
         fargs = (pos, nodelist, drawn_nodes, drawn_elevated, status_order, graph_ax, ts_axes, time_markers, nx_kwargs)
 
-        ani = FuncAnimation(fig, self._update_ani_, frames = frame_times, fargs = fargs, repeat=False)
+        ani = FuncAnimation(fig, self._update_ani_, frames = frame_times, fargs = fargs, repeat=True)
 
         return ani
                 
@@ -1063,4 +1063,3 @@ class Simulation_Investigation():
         #to save do
         #ani = simulation.animation()
         #ani.save(filename, fps=5, extra_args=['-vcodec', 'libx264'])
-
