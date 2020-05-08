@@ -521,7 +521,9 @@ def discrete_SIR(G_initial, test_transmission=_simple_test_transmission_, args=(
             connected_neighbors: set of nodes the node is presently connected to
             susceptable_neighboors: set of (
 
-    **graph_commander** TODO
+    **graph_commander** list containing a dictionary of countries and their information, and a sublist
+        with a copy of the original graph.  This is used to store "checkpoints" that can show the graph
+        with the updated number of edges.
 
     **return_full_data** boolean (default False)
         Tells whether a Simulation_Investigation object should be returned.  
@@ -534,7 +536,7 @@ def discrete_SIR(G_initial, test_transmission=_simple_test_transmission_, args=(
     :Returns: 
         
         
-    **t, S, I, R** numpy arrays
+    **t, S, I, R, avgDeg** numpy arrays
             
     Or ``if return_full_data is True`` returns
     
@@ -551,7 +553,7 @@ def discrete_SIR(G_initial, test_transmission=_simple_test_transmission_, args=(
         import EoN
         import matplotlib.pyplot as plt
         G = nx.fast_gnp_random_graph(1000,0.002)
-        t, S, I, R = EoN.discrete_SIR(G, args = (0.6,), 
+        t, S, I, R, avgDeg = EoN.discrete_SIR(G, args = (0.6,),
                                             initial_infecteds=range(20))
         plt.plot(t,I)
     
@@ -667,6 +669,7 @@ def discrete_SIR(G_initial, test_transmission=_simple_test_transmission_, args=(
                 infected_nodes = infecteds.intersection(country_nodes)
                 percentage = len(infected_nodes)/len(country_nodes)
                 countries[c]["infected"] = percentage
+                checkpoints.append(countries.copy())
             # Compile edges to remove
             for c in countries:
                 # Check if own infected rate is too high
@@ -677,7 +680,7 @@ def discrete_SIR(G_initial, test_transmission=_simple_test_transmission_, args=(
                     if len(g_remove_edges) > 0:
                         print('{} is closing all borders'.format(c))
                         G.remove_edges_from(g_remove_edges)
-                        checkpoints.append(G.copy())
+                        #checkpoints.append(G.copy())
                 # If not, check if other countries infected rate is too high
                 else:
                     for c1 in countries:
@@ -691,7 +694,7 @@ def discrete_SIR(G_initial, test_transmission=_simple_test_transmission_, args=(
                             if len(g_remove_edges) > 0:
                                 print('{} is closing off its border to {}'.format(c, c1))
                                 G.remove_edges_from(g_remove_edges)
-                                checkpoints.append(G.copy())
+                                #checkpoints.append(G.copy())
 
         if return_full_data:
             for v in infector.keys():
@@ -712,9 +715,12 @@ def discrete_SIR(G_initial, test_transmission=_simple_test_transmission_, args=(
         S.append(S[-1]-I[-1])
         t.append(t[-1]+1)
         avg_degree.append(sum([deg[1] for deg in G.degree()])/len(G))
-    if not return_full_data:
+    if not return_full_data and not graph_commander:
         return np.array(t), np.array(S), np.array(I), \
                np.array(R), np.array(avg_degree)
+    elif not return_full_data and graph_commander:
+        return np.array(t), np.array(S), np.array(I), \
+               np.array(R), np.array(avg_degree), checkpoints
     elif return_full_data and graph_commander:
         if sim_kwargs is None:
             sim_kwargs = {}
