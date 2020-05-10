@@ -593,6 +593,10 @@ def discrete_SIR(G_initial, test_transmission=_simple_test_transmission_, args=(
     I = [len(initial_infecteds)]
     R = [0]
     avg_degree = [sum([deg[1] for deg in G.degree()])/len(G)]
+    checkpoint_countries = {}
+    if graph_commander:
+        for c in graph_commander[0]:
+            checkpoint_countries[c] = []
     
     susceptible = defaultdict(lambda: True)  
     #above line is equivalent to u.susceptible=True for all nodes.
@@ -669,7 +673,7 @@ def discrete_SIR(G_initial, test_transmission=_simple_test_transmission_, args=(
                 infected_nodes = infecteds.intersection(country_nodes)
                 percentage = len(infected_nodes)/len(country_nodes)
                 countries[c]["infected"] = percentage
-                checkpoints.append(countries.copy())
+                checkpoint_countries[c].append(percentage)
             # Compile edges to remove
             for c in countries:
                 # Check if own infected rate is too high
@@ -680,7 +684,7 @@ def discrete_SIR(G_initial, test_transmission=_simple_test_transmission_, args=(
                     if len(g_remove_edges) > 0:
                         print('{} is closing all borders'.format(c))
                         G.remove_edges_from(g_remove_edges)
-                        #checkpoints.append(G.copy())
+                        checkpoints.append(G.copy())
                 # If not, check if other countries infected rate is too high
                 else:
                     for c1 in countries:
@@ -694,7 +698,7 @@ def discrete_SIR(G_initial, test_transmission=_simple_test_transmission_, args=(
                             if len(g_remove_edges) > 0:
                                 print('{} is closing off its border to {}'.format(c, c1))
                                 G.remove_edges_from(g_remove_edges)
-                                #checkpoints.append(G.copy())
+                                checkpoints.append(G.copy())
 
         if return_full_data:
             for v in infector.keys():
@@ -720,7 +724,7 @@ def discrete_SIR(G_initial, test_transmission=_simple_test_transmission_, args=(
                np.array(R), np.array(avg_degree)
     elif not return_full_data and graph_commander:
         return np.array(t), np.array(S), np.array(I), \
-               np.array(R), np.array(avg_degree), checkpoints
+               np.array(R), np.array(avg_degree), checkpoint_countries
     elif return_full_data and graph_commander:
         if sim_kwargs is None:
             sim_kwargs = {}
@@ -831,6 +835,7 @@ def basic_discrete_SIR(G, p, initial_infecteds=None,
 
 def basic_discrete_SIS(G, p, initial_infecteds=None, rho = None,
                                 tmin = 0, tmax = 100, return_full_data = False, 
+                                graph_commander=None,
                                 sim_kwargs = None):
     
     '''Does a simulation of the simple case of all nodes transmitting
@@ -913,10 +918,15 @@ def basic_discrete_SIS(G, p, initial_infecteds=None, rho = None,
         for u in initial_infecteds:
             node_history[u] = ([tmin], ['I'])
             transmissions.append((tmin-1, None, u))
+    G_original = G.copy()
     N=G.order()
     t = [tmin]
     S = [N-len(initial_infecteds)]
     I = [len(initial_infecteds)]
+    checkpoint_countries = {}
+    if graph_commander:
+        for c in graph_commander:
+            checkpoint_countries[c] = []
     
     infecteds = set(initial_infecteds)
     while infecteds and t[-1]<tmax:
@@ -934,6 +944,85 @@ def basic_discrete_SIS(G, p, initial_infecteds=None, rho = None,
                         
 #            new_infecteds.union({v for v in G.neighbors(u) 
 #                                  if random.random()<p and v not in infecteds})
+
+        if graph_commander:
+            '''
+            Idea: going to use subgraphs to represent countries.  Can check on the percentage 
+            infected in other countries to determine if it will close its borders.  Closing borders
+            means no connections between countries. 
+            '''
+            countries = graph_commander
+            def get_remove_edges(country1, country2=None, close_all=False):
+                g_remove_edges = []
+                if country2 and close_all:
+                    raise EoN.EoNError("must choose either country2 or close_all")
+                c1_node_ids = list((countries[country1]["G"]).nodes)
+                if country2:
+                    c2_node_ids  = list((countries[country2]["G"]).nodes)
+                    for edge in G.edges:
+                        if edge[0] in c1_node_ids and edge[1] in c2_node_ids:
+                            g_remove_edges.append(edge)
+                        if edge[1] in c1_node_ids and edge[0] in c2_node_ids:
+                            g_remove_edges.append(edge)
+                if close_all:
+                    for edge in G.edges:
+                        if edge[0] in c1_node_ids and edge[1] not in c1_node_ids:
+                            g_remove_edges.append(edge)
+                        if edge[1] in c1_node_ids and edge[0] not in c1_node_ids:
+                            g_remove_edges.append(edge)
+                return g_remove_edges
+            def get_append_edges(country1, add_countries):
+                g_append_edges = []
+                c1_node_ids = list((countries[country1]["G"]).nodes)
+                for c in add_countries:
+                    c_node_ids = list((countries[c]["G"]).nodes)
+                    for edge in G_original.edges:
+                        if edge[0] in c1_node_ids and edge[1] in c_node_ids:
+                            g_append_edges.append(edge)
+                        if edge[1] in c1_node_ids and edge[0] in c_node_ids:
+                            g_append_edges.append(edge)
+                return g_append_edges
+            # Update infected percentage
+            for c in countries:
+                country_nodes = list((countries[c]["G"]).nodes)
+                infected_nodes = infecteds.intersection(country_nodes)
+                percentage = len(infected_nodes)/len(country_nodes)
+                countries[c]["infected"] = percentage
+                checkpoint_countries[c].append(len(infected_nodes))
+            # Compile edges to remove
+            for c in countries:
+                # Check if own infected rate is too high
+                if countries[c]["infected"] >= countries[c]["tolerance_in"]:
+                    # If so, close all borders
+                    countries[c]["closed_borders"] = list(countries.keys())
+                    g_remove_edges = get_remove_edges(c, close_all=True)
+                    if len(g_remove_edges) > 0:
+                        #print('{} is closing all borders'.format(c))
+                        G.remove_edges_from(g_remove_edges)
+                # If not, check if other countries infected rate is too high
+                else:
+                    open_to = []
+                    for c1 in countries:
+                        if (not c == c1) and countries[c1]["infected"] >= countries[c]["tolerance_out"]:
+                            # If so, close borders to that country
+                            if countries[c]["closed_borders"] and c1 not in countries[c]["closed_borders"]:
+                                countries[c]["closed_borders"].append(c1)
+                            elif countries[c]["closed_borders"] and c1 in countries[c]["closed_borders"]:
+                                continue
+                            else:
+                                countries[c]["closed_borders"] = [c1]
+                            g_remove_edges = get_remove_edges(c, country2=c1)
+                            if len(g_remove_edges) > 0:
+                                #print('{} is closing off its border to {}'.format(c, c1))
+                                G.remove_edges_from(g_remove_edges)
+                        elif (not c == c1) and countries[c1]["infected"] < countries[c]["tolerance_out"]:
+                            # Append border to be reopen
+                            if countries[c]["closed_borders"] and c1 in countries[c]["closed_borders"]:
+                                open_to.append(c1)
+                                countries[c]["closed_borders"].remove(c1)
+                    if open_to:
+                        #print('{} is opening borders to {}'.format(c, *open_to))
+                        G.add_edges_from(get_append_edges(c, open_to))
 
         if return_full_data:
             for v in infector.keys():
@@ -953,7 +1042,7 @@ def basic_discrete_SIS(G, p, initial_infecteds=None, rho = None,
             
         
     if not return_full_data:
-        return np.array(t), np.array(S), np.array(I)
+        return np.array(t), np.array(S), np.array(I), checkpoint_countries
     else:
         if sim_kwargs is None:
             sim_kwargs = {}
